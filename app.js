@@ -590,28 +590,41 @@ function parseLines(text) {
   return text.split("\n").map(l => l.trim().replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, "").replace(/\*\*/g, "").trim())
     .filter(l => l && !/^```/.test(l)).map(l => {
     const parts = l.includes("\t") ? l.split("\t") : l.split(/\s*;\s*/);
-    return parts.length >= 2 && parts[0] && parts[1] ? { front: parts[0].trim(), back: parts[1].trim(), extra: (parts[2] || "").trim() } : null;
+    // " | " in the front is a line break (lets the AI write fronts like "meaning | sentence with ___").
+    return parts.length >= 2 && parts[0] && parts[1] ? { front: parts[0].trim().replace(/\s+\|\s+/g, "\n\n"), back: parts[1].trim(), extra: (parts[2] || "").trim() } : null;
   });
 }
 // Request for an outside AI (Claude, ChatGPT): answer comes back in the "front ; back ; example" format above.
+// A few cards of the deck go along as models, so new cards take the same shape (single word, sentence with a gap…).
 function aiPrompt(d, topic) {
+  const cs = cardsOf(d.id).slice().sort((a, b) => a.order - b.order), line = c => [c.front.replace(/\s*\n+\s*/g, " | "), c.back, c.extra].filter(Boolean).join(" ; ");
+  const models = cs.length ? [...new Set([0, Math.floor(cs.length / 2), cs.length - 1])].map(i => line(cs[i])) : [];
   return `Make flashcards for my flashcard app. Topic: ${topic}
 My deck is called "${d.name}".
 
 Reply with the cards only, one per line, in exactly this format:
 front ; back ; example sentence
-
+` + (models.length ? `
+Here are cards already in my deck. Make the new ones in exactly the same style and languages (" | " is a line break on the front):
+${models.join("\n")}
+` : "") + `
 Rules:
 - No title, no numbering, no bullet points, no extra text before or after.
 - Never put a ";" inside a field.
-- Keep the front and the back short (a word or a short phrase). The example is optional.
+- Keep the back short (a word or a short phrase). The example is optional.
 - Make 20 cards unless the topic says how many.`;
 }
-// Splits pasted rows into new cards and ones already in the deck (same front), checked against the whole deck.
+// Splits pasted rows into new cards and ones already in the deck, checked against the whole deck.
+// A row is a duplicate when its front or back matches the front (or its first line) or the back of a card already there,
+// so it is caught even when the deck's cards are shaped differently (e.g. "meaning + sentence" → "look after").
 function freshRows(deckId, rows) {
-  const seen = new Set(cardsOf(deckId).flatMap(c => [norm(c.front), norm(c.front.split("\n")[0])])), fresh = []; let dup = 0; // starter fronts carry an example on later lines
-  for (const r of rows) { const k = norm(r.front); if (k && seen.has(k)) { dup++; continue; } seen.add(k); fresh.push(r); }
-  return { fresh, dup };
+  const seen = new Set(cardsOf(deckId).flatMap(c => [norm(c.front), norm(c.front.split("\n")[0]), norm(c.back)]).filter(Boolean)), fresh = [], dups = [];
+  for (const r of rows) {
+    const keys = [norm(r.front), norm(r.front.split("\n")[0]), norm(r.back)].filter(Boolean);
+    if (keys.some(k => seen.has(k))) { dups.push(r); continue; }
+    seen.add(keys[0]); fresh.push(r);
+  }
+  return { fresh, dup: dups.length, dups };
 }
 function bulk() {
   const d = deckById(view.deck); if (!d) return go({ name: "home" });
@@ -637,8 +650,9 @@ function bulk() {
     </div>`;
   wireBack({ name: "deck", deck: d.id });
   const upd = () => {
-    const rows = parseLines($("#lines").value), bad = rows.filter(r => !r).length, { fresh, dup } = freshRows(d.id, rows.filter(Boolean)), ok = fresh.length;
-    $("#preview").textContent = `${ok} card${ok === 1 ? "" : "s"} ready${dup ? ` · ${dup} already in this deck, skipped` : ""}${bad ? ` · ${bad} line${bad === 1 ? "" : "s"} without “ ; ” will be skipped` : ""}.`;
+    const rows = parseLines($("#lines").value), bad = rows.filter(r => !r).length, { fresh, dup, dups } = freshRows(d.id, rows.filter(Boolean)), ok = fresh.length;
+    const names = dups.slice(0, 6).map(r => r.front.split("\n")[0]).join(", ") + (dup > 6 ? "…" : "");
+    $("#preview").textContent = `${ok} card${ok === 1 ? "" : "s"} ready${dup ? ` · ${dup} already in this deck, won't be added: ${names}` : ""}${bad ? ` · ${bad} line${bad === 1 ? "" : "s"} without “ ; ” will be skipped` : ""}.`;
     $("#addAll").disabled = !ok; $("#addAll").textContent = ok ? `Add ${ok * ($("#rev").checked ? 2 : 1)} cards` : "Add cards";
   };
   $("#lines").oninput = upd; $("#rev").onchange = upd;
