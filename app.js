@@ -595,9 +595,6 @@ function parseLines(text) {
 }
 // Request for an outside AI (Claude, ChatGPT): answer comes back in the "front ; back ; example" format above.
 function aiPrompt(d, topic) {
-  // Recent short fronts, so the AI skips cards already in the deck (kept small: the request travels in a link).
-  const have = []; let len = 0;
-  for (const f of cardsOf(d.id).map(c => c.front).reverse()) { if (!f || f.length > 40) continue; if ((len += f.length + 2) > 1200) break; have.push(f); }
   return `Make flashcards for my flashcard app. Topic: ${topic}
 My deck is called "${d.name}".
 
@@ -608,14 +605,20 @@ Rules:
 - No title, no numbering, no bullet points, no extra text before or after.
 - Never put a ";" inside a field.
 - Keep the front and the back short (a word or a short phrase). The example is optional.
-- Make 20 cards unless the topic says how many.` + (have.length ? `\n- Skip these, I already have them: ${have.join(", ")}` : "");
+- Make 20 cards unless the topic says how many.`;
+}
+// Splits pasted rows into new cards and ones already in the deck (same front), checked against the whole deck.
+function freshRows(deckId, rows) {
+  const seen = new Set(cardsOf(deckId).flatMap(c => [norm(c.front), norm(c.front.split("\n")[0])])), fresh = []; let dup = 0; // starter fronts carry an example on later lines
+  for (const r of rows) { const k = norm(r.front); if (k && seen.has(k)) { dup++; continue; } seen.add(k); fresh.push(r); }
+  return { fresh, dup };
 }
 function bulk() {
   const d = deckById(view.deck); if (!d) return go({ name: "home" });
   app.innerHTML = `${header("Add many", true)}
     <div class="panel">
       <p class="label" style="margin:0">Create with AI</p>
-      <p class="muted small-text" style="margin:0">Say what the cards should be about. Hfad writes the request for you: open your AI, copy its answer, come back and paste it below.</p>
+      <p class="muted small-text" style="margin:0">Say what the cards should be about. Hfad writes the request for you: open your AI, copy its answer, come back and paste it below. Not quite right? Ask the AI to change it before you copy. Cards you already have are skipped.</p>
       <input type="text" id="aiTopic" placeholder="e.g. 20 kitchen words, French → English" autocomplete="off">
       <div class="row">
         <button class="small" id="aiClaude">Open in Claude</button>
@@ -634,8 +637,8 @@ function bulk() {
     </div>`;
   wireBack({ name: "deck", deck: d.id });
   const upd = () => {
-    const rows = parseLines($("#lines").value), ok = rows.filter(Boolean).length, bad = rows.length - ok;
-    $("#preview").textContent = `${ok} card${ok === 1 ? "" : "s"} ready${bad ? ` · ${bad} line${bad === 1 ? "" : "s"} without “ ; ” will be skipped` : ""}.`;
+    const rows = parseLines($("#lines").value), bad = rows.filter(r => !r).length, { fresh, dup } = freshRows(d.id, rows.filter(Boolean)), ok = fresh.length;
+    $("#preview").textContent = `${ok} card${ok === 1 ? "" : "s"} ready${dup ? ` · ${dup} already in this deck, skipped` : ""}${bad ? ` · ${bad} line${bad === 1 ? "" : "s"} without “ ; ” will be skipped` : ""}.`;
     $("#addAll").disabled = !ok; $("#addAll").textContent = ok ? `Add ${ok * ($("#rev").checked ? 2 : 1)} cards` : "Add cards";
   };
   $("#lines").oninput = upd; $("#rev").onchange = upd;
@@ -649,7 +652,7 @@ function bulk() {
   };
   $("#aiClaude").onclick = () => ask("claude"); $("#aiGpt").onclick = () => ask("gpt"); $("#aiCopy").onclick = () => ask("copy");
   $("#addAll").onclick = () => {
-    const rows = parseLines($("#lines").value).filter(Boolean), base = Date.now();
+    const rows = freshRows(d.id, parseLines($("#lines").value).filter(Boolean)).fresh, base = Date.now();
     rows.forEach((r, i) => {
       S.cards.push(newCard(d.id, r.front, r.back, r.extra, [], base + i));
       if ($("#rev").checked) S.cards.push(newCard(d.id, r.back, r.front, r.extra, [], base + i + 0.5));
