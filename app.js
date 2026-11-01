@@ -594,25 +594,29 @@ function parseLines(text) {
     return parts.length >= 2 && parts[0] && parts[1] ? { front: parts[0].trim().replace(/\s+\|\s+/g, "\n\n"), back: parts[1].trim(), extra: (parts[2] || "").trim() } : null;
   });
 }
-// Request for an outside AI (Claude, ChatGPT): answer comes back in the "front ; back ; example" format above.
-// A few cards of the deck go along as models, so new cards take the same shape (single word, sentence with a gap…).
+// Request for an outside AI (Claude, ChatGPT). It sets the frame (format, number of cards), then the AI asks ONE short
+// round of questions (direction, card type, details) and, after the answer, writes the cards in the format parseLines reads.
+// One card of the deck is mentioned only as the default suggestion, never imposed.
 function aiPrompt(d, topic) {
-  const cs = cardsOf(d.id).slice().sort((a, b) => a.order - b.order), line = c => [c.front.replace(/\s*\n+\s*/g, " | "), c.back, c.extra].filter(Boolean).join(" ; ");
-  const models = cs.length ? [...new Set([0, Math.floor(cs.length / 2), cs.length - 1])].map(i => line(cs[i])) : [];
-  return `Make flashcards for my flashcard app. Topic: ${topic}
-My deck is called "${d.name}".
+  const m = topic.match(/\b(\d{1,3})\b/), n = m ? `${m[1]} cards` : `20 cards (default: tell me if you want another number)`;
+  const cs = cardsOf(d.id), c = cs.length ? cs.slice().sort((a, b) => a.order - b.order)[0] : null;
+  const model = c ? [c.front.replace(/\s*\n+\s*/g, " | "), c.back, c.extra].filter(Boolean).join(" ; ") : "";
+  return `I want to create flashcards for my flashcard app (Hfad).
+Topic: ${topic}
+Deck: "${d.name}"
+Number of cards: ${n}
 
-Reply with the cards only, one per line, in exactly this format:
-front ; back ; example sentence
-` + (models.length ? `
-Here are cards already in my deck. Make the new ones in exactly the same style and languages (" | " is a line break on the front):
-${models.join("\n")}
-` : "") + `
-Rules:
-- No title, no numbering, no bullet points, no extra text before or after.
-- Never put a ";" inside a field.
-- Keep the back short (a word or a short phrase). The example is optional.
-- Make 20 cards unless the topic says how many.`;
+Step 1. Don't write any card yet. Ask me ONE short message with these quick questions, each with 2-3 suggested answers I can pick:
+1. Which language on the front, which on the back?
+2. Card type: a single word or phrase, or a sentence with a gap (___) to complete?
+3. Anything to specify about the topic (level, situation)?` + (c ? `
+Suggest the style of my current cards as the default option. One of them looks like this: ${model}` : "") + `
+
+Step 2. After my answer, write the cards straight away, with no more questions:
+- One card per line, exactly: front ; back ; example sentence
+- No title, no numbering, no bullet points, no text before or after, so I can copy everything at once.
+- Never put a ";" inside a field. Keep the back short.
+- For gap cards: the sentence with ___ on the front, the missing word(s) on the back, the full sentence as the example. " | " makes a line break on the front (e.g. "meaning | sentence with ___").`;
 }
 // Splits pasted rows into new cards and ones already in the deck, checked against the whole deck.
 // A row is a duplicate when its front or back matches the front (or its first line) or the back of a card already there,
@@ -631,7 +635,7 @@ function bulk() {
   app.innerHTML = `${header("Add many", true)}
     <div class="panel">
       <p class="label" style="margin:0">Create with AI</p>
-      <p class="muted small-text" style="margin:0">Say what the cards should be about. Hfad writes the request for you: open your AI, copy its answer, come back and paste it below. Not quite right? Ask the AI to change it before you copy. Cards you already have are skipped.</p>
+      <p class="muted small-text" style="margin:0">Say what the cards should be about, and how many. Open your AI and send the request: it asks you a few quick questions, then writes the cards. Copy them, come back and paste them below. Cards you already have are skipped.</p>
       <input type="text" id="aiTopic" placeholder="e.g. 20 kitchen words, French → English" autocomplete="off">
       <div class="row">
         <button class="small" id="aiClaude">Open in Claude</button>
