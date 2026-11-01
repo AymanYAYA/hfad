@@ -627,7 +627,7 @@ function bulk() {
     <div class="panel">
       <p style="margin:0">One card per line: <b>front ; back</b>, and optionally <b>; example</b>.</p>
       <p class="muted small-text" style="margin:0">You can also paste two columns from Excel or Google Sheets. Example:<br><code>partir ; to leave ; I leave at 6.</code><br><code>oublier ; to forget</code></p>
-      <textarea id="lines" class="big" placeholder="partir ; to leave&#10;oublier ; to forget"></textarea>
+      <textarea id="lines" class="big" placeholder="Paste the AI’s answer here, or type:&#10;partir ; to leave&#10;oublier ; to forget"></textarea>
       <label class="check"><input type="checkbox" id="rev"> Also add the reversed cards</label>
       <p class="muted small-text" id="preview" style="margin:0">0 cards ready.</p>
       <button class="primary wide" id="addAll" disabled>Add cards</button>
