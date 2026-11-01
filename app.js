@@ -689,7 +689,8 @@ function settings() {
       <p class="muted small-text" style="margin:0">The other version is replaced.</p>`;
   } else account = `<p style="margin:0">Signed in as <b>${esc(window.cloud.user.email)}</b>. Your decks are saved in your account and follow you on every device.</p>
       <p class="muted small-text" style="margin:0" id="syncBadge">${syncText()}${sync.last ? ` · ${new Date(sync.last).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}</p>
-      <div class="row"><button class="small" id="syncBtn">Sync now</button><button class="small" id="signOut">Sign out</button></div>`;
+      <div class="row"><button class="small" id="syncBtn">Sync now</button><button class="small" id="signOut">Sign out</button></div>
+      <button class="link danger" id="delAcc" style="align-self:flex-start">Delete my account</button>`;
   const install = isInstalled() ? `<p style="margin:0">✓ Hfad is installed on this device. It opens from its icon and works without internet.</p>`
     : installPrompt ? `<p style="margin:0">Add Hfad to this device like a real app: its own icon, full screen, works without internet.</p><button class="primary" id="installBtn">Install Hfad</button>`
     : isIOS() ? `<p style="margin:0">Add Hfad to your home screen like a real app: its own icon, full screen, works without internet.</p>
@@ -707,11 +708,23 @@ function settings() {
     <div class="panel">
       <h2>How cards are scheduled</h2>
       <p class="muted small-text" style="margin:0">Hfad uses FSRS, the same scheduler as recent versions of Anki. It aims for a 90% chance that you still remember a card when it comes back: cards you know well come back after longer and longer gaps, cards you forget come back sooner.</p>
-    </div>`;
+    </div>
+    <p class="muted small-text" style="margin:0;text-align:center"><a href="privacy.html" style="color:var(--accent)">Privacy</a> · No ads, no tracking, your data is never sold.</p>`;
   const on = (id, f) => { const el = $("#" + id); if (el) el.onclick = f; };
   on("installBtn", async () => { if (!installPrompt) return; installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; render(); });
   on("signIn", async () => { try { await window.cloud.signIn(); } catch (e) { toast("Sign-in failed: " + (e.code || "try again")); } });
   on("signOut", async () => { await window.cloud.signOut(); S.syncedTo = null; saveLocal(); toast("Signed out. Your cards stay on this device."); render(); });
+  on("delAcc", async e => {
+    const b = e.currentTarget;
+    if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Tap again to delete your account and its saved data for good"; return; }
+    b.disabled = true; b.textContent = "Deleting…";
+    clearTimeout(pushTimer);
+    try { await window.cloud.deleteAccount(); S.syncedTo = null; saveLocal(); toast("Account deleted. Your cards stay on this device only."); }
+    catch (err) {
+      if (err.nothingDeleted) { toast("Couldn't delete: check your internet and try again"); render(); return; }
+      S.syncedTo = null; saveLocal(); await window.cloud.signOut().catch(() => {}); toast("Your saved data is deleted. To finish, sign in again and tap Delete once more."); }
+    render();
+  });
   on("syncBtn", () => syncNow(false).then(render));
   on("keepCloud", () => { applyRemote(sync.pending); sync.pending = null; toast("Your account's data is now on this device"); go({ name: "home" }); });
   on("keepLocal", () => { sync.pending = null; S.syncedTo = window.cloud.user.uid; S.updated = Date.now(); saveLocal(); pushNow().then(() => { toast("This device's data is now saved in your account"); render(); }); });

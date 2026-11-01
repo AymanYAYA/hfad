@@ -2,8 +2,8 @@
 // Each user has one document users/{uid} that only they can read and write (see Firestore security rules).
 // This config is public by design: what protects the data is the security rules, not this key.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, deleteUser, reauthenticateWithPopup } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBqS0KOD5JH1_HmDBtMdSlO0NcBo10iruY",
@@ -35,6 +35,17 @@ window.cloud = {
   signOut: () => signOut(auth),
   async pull() { const s = await getDoc(ref()); return s.exists() ? s.data() : null; },
   push: data => setDoc(ref(), data),
+  // Deletes the saved data, then the account itself. Google asks for a recent sign-in before deleting an account.
+  async deleteAccount() {
+    try { await deleteDoc(ref()); } catch (e) { e.nothingDeleted = true; throw e; }
+    const user = auth.currentUser;
+    try { await deleteUser(user); }
+    catch (e) {
+      if (e.code !== "auth/requires-recent-login") throw e;
+      await reauthenticateWithPopup(user, provider);
+      await deleteUser(user);
+    }
+  },
 };
 getRedirectResult(auth).catch(() => {});
 onAuthStateChanged(auth, user => {
