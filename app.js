@@ -586,14 +586,44 @@ function add() {
 
 // --- Add many at once: one card per line, "front ; back" (or pasted from a spreadsheet)
 function parseLines(text) {
-  return text.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+  // AI answers often come with code fences, bullets, numbers or **bold**: clean them away.
+  return text.split("\n").map(l => l.trim().replace(/^(?:[-*•]\s+|\d+[.)]\s+)/, "").replace(/\*\*/g, "").trim())
+    .filter(l => l && !/^```/.test(l)).map(l => {
     const parts = l.includes("\t") ? l.split("\t") : l.split(/\s*;\s*/);
     return parts.length >= 2 && parts[0] && parts[1] ? { front: parts[0].trim(), back: parts[1].trim(), extra: (parts[2] || "").trim() } : null;
   });
 }
+// Request for an outside AI (Claude, ChatGPT): answer comes back in the "front ; back ; example" format above.
+function aiPrompt(d, topic) {
+  // Recent short fronts, so the AI skips cards already in the deck (kept small: the request travels in a link).
+  const have = []; let len = 0;
+  for (const f of cardsOf(d.id).map(c => c.front).reverse()) { if (!f || f.length > 40) continue; if ((len += f.length + 2) > 1200) break; have.push(f); }
+  return `Make flashcards for my flashcard app. Topic: ${topic}
+My deck is called "${d.name}".
+
+Reply with the cards only, one per line, in exactly this format:
+front ; back ; example sentence
+
+Rules:
+- No title, no numbering, no bullet points, no extra text before or after.
+- Never put a ";" inside a field.
+- Keep the front and the back short (a word or a short phrase). The example is optional.
+- Make 20 cards unless the topic says how many.` + (have.length ? `\n- Skip these, I already have them: ${have.join(", ")}` : "");
+}
 function bulk() {
   const d = deckById(view.deck); if (!d) return go({ name: "home" });
   app.innerHTML = `${header("Add many", true)}
+    <div class="panel">
+      <p class="label" style="margin:0">Create with AI</p>
+      <p class="muted small-text" style="margin:0">Say what the cards should be about. Hfad writes the request for you: open your AI, copy its answer, come back and paste it below.</p>
+      <input type="text" id="aiTopic" placeholder="e.g. 20 kitchen words, French → English" autocomplete="off">
+      <div class="row">
+        <button class="small" id="aiClaude">Open in Claude</button>
+        <button class="small" id="aiGpt">Open in ChatGPT</button>
+        <button class="small link" id="aiCopy">Copy the request</button>
+      </div>
+      <textarea id="aiText" readonly hidden></textarea>
+    </div>
     <div class="panel">
       <p style="margin:0">One card per line: <b>front ; back</b>, and optionally <b>; example</b>.</p>
       <p class="muted small-text" style="margin:0">You can also paste two columns from Excel or Google Sheets. Example:<br><code>partir ; to leave ; I leave at 6.</code><br><code>oublier ; to forget</code></p>
@@ -609,6 +639,15 @@ function bulk() {
     $("#addAll").disabled = !ok; $("#addAll").textContent = ok ? `Add ${ok * ($("#rev").checked ? 2 : 1)} cards` : "Add cards";
   };
   $("#lines").oninput = upd; $("#rev").onchange = upd;
+  const ask = how => {
+    const topic = $("#aiTopic").value.trim();
+    if (!topic) { toast("Say what the cards should be about"); $("#aiTopic").focus(); return; }
+    const prompt = aiPrompt(d, topic);
+    if (how !== "copy") return window.open((how === "claude" ? "https://claude.ai/new?q=" : "https://chatgpt.com/?q=") + encodeURIComponent(prompt), "_blank", "noopener");
+    const show = () => { const t = $("#aiText"); t.hidden = false; t.value = prompt; t.select(); toast("Copy this text and paste it in your AI"); };
+    navigator.clipboard ? navigator.clipboard.writeText(prompt).then(() => toast("Request copied: paste it in your AI"), show) : show();
+  };
+  $("#aiClaude").onclick = () => ask("claude"); $("#aiGpt").onclick = () => ask("gpt"); $("#aiCopy").onclick = () => ask("copy");
   $("#addAll").onclick = () => {
     const rows = parseLines($("#lines").value).filter(Boolean), base = Date.now();
     rows.forEach((r, i) => {
