@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://www.gstatic.com https://apis.google.com; frame-src https://hfad-30a1c.firebaseapp.com https://accounts.google.com https://apis.google.com; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Hfad</title>
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,7 +19,7 @@
 <style>
 /* Calm paper look: one column, cards as the page, a quiet tab bar at the bottom. */
 :root {
-  --bg: #F4EEE3; --surface: #FBF8F2; --ink: #2A2621; --muted: #7C7366; --line: #E4DACA;
+  --bg: #F4EEE3; --surface: #FBF8F2; --ink: #2A2621; --muted: #6B6357; --line: #E4DACA;
   --accent: #4E5D3A; --accent-soft: #E7E6D3;
   --again: #9B3B2B; --hard-bg: #F3DAD3; --hard: #8A3627; --good-bg: #DDE9D5; --good: #355E33; --easy: #3E6B3B;
   --new: #3E6B9B; --due: #3E6B3B;
@@ -133,6 +135,7 @@ details.adv[open] summary::after { content: " ▴"; }
 /* Study: the flip card */
 .study-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .study-top .nums { font-size: 0.9rem; }
+.study-top h1 { flex: 1; font: inherit; font-size: 0.88rem; color: var(--muted); }
 .scene { perspective: 1400px; }
 .flip { position: relative; display: grid; transition: transform .6s cubic-bezier(.2,.75,.25,1); transform-style: preserve-3d; cursor: pointer; }
 .flip.turned { transform: rotateY(180deg); cursor: default; }
@@ -158,7 +161,7 @@ details.adv[open] summary::after { content: " ▴"; }
 .giveup { color: var(--again); border-color: var(--again); }
 .grades { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .grades button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 4px; }
-.grades small { font-weight: 400; font-size: .8rem; opacity: .85; }
+.grades small { font-weight: 400; font-size: .8rem; }
 .g-1 { background: var(--again); border-color: var(--again); color: #fff; }
 .g-2 { background: var(--hard-bg); border-color: #E6BFB4; color: var(--hard); }
 .g-3 { background: var(--good-bg); border-color: #C3D8B6; color: var(--good); }
@@ -190,7 +193,7 @@ nav.tabs button[aria-current="page"] { color: var(--accent); }
 </nav>
 <script src="decks.js?v=11"></script>
 <script src="phrasal.js?v=1"></script>
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 <script type="module" src="cloud.js?v=2"></script>
 </body>
 </html>

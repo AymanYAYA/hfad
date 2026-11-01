@@ -723,7 +723,7 @@ function study() {
   const nNew = left.filter(x => x.state === "new").length;
   const stateTag = c.state === "new" ? "New" : c.state === "learning" ? "Again" : "Review";
   app.innerHTML = `
-    <div class="study-top"><button class="back-btn" id="back" aria-label="Back">‹</button><span class="muted small-text" style="flex:1">${esc(d.name)}</span>${nums(nNew, left.length - nNew)}</div>
+    <div class="study-top"><button class="back-btn" id="back" aria-label="Back">‹</button><h1>${esc(d.name)}</h1>${nums(nNew, left.length - nNew)}</div>
     <div class="scene enter"><div class="flip" id="flip">
       <div class="face front"><div class="tag"><span>${stateTag}</span></div>
         <div class="q">${esc(c.front)}</div>

@@ -26,6 +26,8 @@ Live at https://aymanyaya.github.io/hfad/ (GitHub Pages, repo AymanYAYA/hfad, br
 - `phrasal.js` — 100 phrasal verbs `[French meaning, answer, alts, English sentence with ___]`, ids `p1`…`p100`.
 - `sw.js` — service worker: app files network-first (no-cache), fonts and Firebase SDK cached. **Bump `CACHE` (hfad-vN) on every release**, otherwise iPhones keep the old version.
 - `manifest.webmanifest`, `icons/` — installable PWA.
+- Security headers: a Content-Security-Policy `<meta>` in `index.html` and `privacy.html` (no inline scripts allowed). A new outside service (API, CDN) must be added there, or it is silently blocked.
+- Text contrast: every text colour passes WCAG AA (4.5:1) on its background; `--muted` is #6B6357 for that reason. Keep it that way.
 
 ## Behaviour worth knowing
 - Sync: merged card by card (sync v3). `save()` stamps `mod` on every card/deck whose content changed and records deletions in `S.gone` (kept 90 days); each sync reads the account doc, merges (latest change wins per card/deck, deletion wins over older changes, today's answers combined, today's stats recounted) and writes only if the account lacks something. Cloud data is gzip+base64 in field `z` (old plain `state` still read). A device with no progress takes the account's data; a device with progress from another Google account asks which to keep. Push debounced 1.5 s, sync on app focus, retry after 30 s on error.
@@ -35,7 +37,7 @@ Live at https://aymanyaya.github.io/hfad/ (GitHub Pages, repo AymanYAYA/hfad, br
 - Safari: the answer input lives outside the 3D flip card (hit-testing bug); the hidden face has `pointer-events: none`.
 
 ## Testing
-No test suite. Test with Playwright (preinstalled; Chromium at `/opt/pw-browsers/chromium`) on `file://…/index.html` with iPhone 13 emulation: clear localStorage, tap `#skip` on the welcome screen, exercise the change, check there are no page errors (ignore cloud.js/CORS errors on file://). Look at a screenshot for any UI change.
+Run `node tests/smoke.js` before every release (walks every screen on an emulated iPhone, fails on page errors). For anything else, test with Playwright (preinstalled; Chromium at `/opt/pw-browsers/chromium`) on `file://…/index.html` with iPhone 13 emulation: clear localStorage, tap `#skip` on the welcome screen, exercise the change, check there are no page errors (ignore cloud.js/CORS errors on file://). Look at a screenshot for any UI change.
 
 ## Ideas not done yet (ask before starting)
 - AI-assisted deck creation (paste a text, get cards).
