@@ -110,6 +110,7 @@ function load() {
   // Ask the browser to keep this data instead of clearing it when space runs low.
   try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
   S.decks.forEach(d => { d.opts = { ...defaultOpts(), ...(d.opts || {}) }; });
+  snapshot(); // from here on, save() notices which cards and decks change
   trimExtras();
   if (upgradeContent()) save();
 }
@@ -127,57 +128,154 @@ function upgradeContent() {
   return changed;
 }
 // Every change: keep it in this browser, then send it to the cloud a moment later if signed in.
-function save() { S.updated = Date.now(); saveLocal(); schedulePush(); }
+function save() { S.updated = Date.now(); stamp(); saveLocal(); schedulePush(); }
 function saveLocal() {
   const limit = Date.now() - 180 * DAY; // keep the history small (about 5 MB per site in browsers)
   if (S.log.length && S.log[0].t < limit) S.log = S.log.filter(l => l.t >= limit);
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast("Could not save: storage is full or blocked."); }
 }
+// Change tracking, so two devices can be merged card by card instead of one replacing the other.
+// Each card and deck keeps the time it last changed (mod); a deleted card or deck leaves a note in S.gone for 90 days.
+// No need to stamp by hand: save() compares every card and deck with how they were at the previous save.
+let sigs = null;
+const sigOf = x => { const { mod, ...rest } = x; return JSON.stringify(rest); };
+function snapshot() { sigs = { c: new Map(S.cards.map(c => [c.id, sigOf(c)])), d: new Map(S.decks.map(d => [d.id, sigOf(d)])) }; }
+function stamp() {
+  if (!sigs) return snapshot();
+  const now = Date.now(), gone = S.gone = S.gone || { c: {}, d: {} };
+  for (const [k, list] of [["c", S.cards], ["d", S.decks]]) {
+    const before = sigs[k], seen = new Set();
+    list.forEach(x => { seen.add(x.id); if (before.get(x.id) !== sigOf(x)) x.mod = now; });
+    before.forEach((_, id) => { if (!seen.has(id)) gone[k][id] = now; });
+  }
+  snapshot();
+}
 
 // ============================================================================
 // 2b. Cloud sync (cloud.js): sign in with Google, your decks follow you on every device.
-//     Rule: the most recent version wins. A device that has never synced with this account asks before replacing anything.
+//     Rule: the two versions are merged card by card. For each card (and deck) the latest change wins,
+//     a deletion wins over older changes, and the history of answers is combined. Nothing studied is lost,
+//     even after studying offline on two devices.
+//     Only exception: a device with progress made under another Google account asks which data to keep.
 // ============================================================================
 const DEVICE = (() => { try { let d = localStorage.getItem("dailydeck.device"); if (!d) { d = uid(); localStorage.setItem("dailydeck.device", d); } return d; } catch (e) { return "unknown"; } })();
 let sync = { state: "off", pending: null, last: 0 };
 const cloudOn = () => window.cloud && window.cloud.user;
-function payload() {
-  const { log, pendingCloud, ...rest } = S, t0 = dayStart();
-  return { v: 2, updated: S.updated || Date.now(), device: DEVICE, state: JSON.stringify({ ...rest, log: log.filter(l => l.t >= t0) }) };
+const timeOf = x => x.mod || x.last || 0; // cards saved before change tracking: their last review stands in
+
+// The saved data is compressed (gzip, about 5 times smaller) so a big collection fits in one cloud document (1 MB).
+const streamTo = (data, t) => new Response(new Blob([data]).stream().pipeThrough(t));
+async function encode(state) {
+  const json = JSON.stringify(state);
+  if (!window.CompressionStream) return { state: json };
+  const bytes = new Uint8Array(await streamTo(json, new CompressionStream("gzip")).arrayBuffer());
+  let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return { z: btoa(s) };
 }
-let pushTimer;
-function schedulePush() { if (!cloudOn() || S.syncedTo !== window.cloud.user.uid) return; clearTimeout(pushTimer); pushTimer = setTimeout(pushNow, 1500); }
-async function pushNow() {
-  if (!cloudOn()) return;
-  sync.state = "syncing"; syncBadge();
-  try { await window.cloud.push(payload()); S.syncedTo = window.cloud.user.uid; sync.last = Date.now(); sync.state = "ok"; saveLocal(); }
-  catch (e) { sync.state = "error"; }
-  syncBadge();
+async function decode(remote) {
+  if (!remote.z) return JSON.parse(remote.state);
+  const bin = atob(remote.z), bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return JSON.parse(await streamTo(bytes, new DecompressionStream("gzip")).text());
 }
-function applyRemote(remote) {
-  const r = JSON.parse(remote.state), t0 = dayStart();
-  const seen = new Set(), log = [...S.log.filter(l => l.t < t0), ...S.log.filter(l => l.t >= t0), ...(r.log || [])]
-    .filter(l => { const k = l.t + "|" + l.card; if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => a.t - b.t);
-  S = { ...r, log, daily: mergeDaily(S.daily, r.daily), since: S.since, syncedTo: window.cloud.user.uid, updated: remote.updated };
+async function payload() {
+  const { log, syncedTo, ...rest } = S, t0 = dayStart();
+  return { v: 3, updated: S.updated || Date.now(), device: DEVICE, ...(await encode({ ...rest, log: log.filter(l => l.t >= t0) })) };
+}
+
+// Merge this device (L) with the account (R). Tells whether this device and the account each need the result.
+function mergeStates(L, R) {
+  let toLocal = false, toCloud = false;
+  const cutoff = Date.now() - 90 * DAY;
+  const gone = { c: {}, d: {} };
+  for (const k of ["c", "d"]) {
+    const a = (L.gone && L.gone[k]) || {}, b = (R.gone && R.gone[k]) || {};
+    for (const id of new Set([...Object.keys(a), ...Object.keys(b)])) {
+      const t = Math.max(a[id] || 0, b[id] || 0); if (t < cutoff) continue;
+      gone[k][id] = t; if ((a[id] || 0) < t) toLocal = true; if ((b[id] || 0) < t) toCloud = true;
+    }
+  }
+  const mergeList = (mine = [], theirs = [], k) => {
+    const rById = new Map(theirs.map(x => [x.id, x])), out = [];
+    const take = (l, r) => {
+      const w = !l ? r : !r ? l : timeOf(r) > timeOf(l) ? r : l; // same time: keep this device's version
+      const g = gone[k][w.id];
+      if (g && g >= timeOf(w)) { if (l) toLocal = true; if (r) toCloud = true; return; } // deleted after its last change
+      if (g) delete gone[k][w.id]; // brought back after the deletion (e.g. a ready-made deck added again)
+      if (w !== l && (!l || sigOf(w) !== sigOf(l) || w.mod !== l.mod)) toLocal = true;
+      if (w !== r && (!r || sigOf(w) !== sigOf(r) || w.mod !== r.mod)) toCloud = true;
+      out.push(w);
+    };
+    mine.forEach(l => { take(l, rById.get(l.id)); rById.delete(l.id); });
+    rById.forEach(r => take(null, r));
+    return out;
+  };
+  const decks = mergeList(L.decks, R.decks, "d"), cards = mergeList(L.cards, R.cards, "c");
+  const maxMap = (a = {}, b = {}) => {
+    const out = { ...a };
+    for (const k in b) { if ((out[k] || 0) < b[k]) { out[k] = b[k]; toLocal = true; } else if (out[k] > b[k]) toCloud = true; }
+    for (const k in a) if (!(k in b)) toCloud = true;
+    return out;
+  };
+  const intro = maxMap(L.intro, R.intro), extraNew = maxMap(L.extraNew, R.extraNew);
+  // history: this device's own, plus today's answers from the account (the cloud keeps only today's)
+  const t0 = dayStart(), seen = new Set(), key = l => l.t + "|" + l.card;
+  const rKeys = new Set((R.log || []).map(key));
+  const log = [...(L.log || []), ...(R.log || [])].filter(l => { const k = key(l); if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => a.t - b.t);
+  if (log.length > (L.log || []).length) toLocal = true;
+  if (log.some(l => l.t >= t0 && !rKeys.has(key(l)))) toCloud = true;
+  // statistics: past days take the larger count; today is recounted from today's combined answers
+  const daily = mergeDaily(L.daily, R.daily), today = dayKey();
+  const S0 = S; S = { daily: {} }; log.filter(l => l.t >= t0).forEach(l => bumpDaily(l.t, l.g, l.was));
+  if (S.daily[today]) daily[today] = S.daily[today]; S = S0;
+  return {
+    state: { ...R, ...L, decks, cards, gone, intro, extraNew, log, daily, tenseV: Math.max(L.tenseV || 0, R.tenseV || 0) || undefined, updated: Math.max(L.updated || 0, R.updated || 0) },
+    toLocal, toCloud
+  };
+}
+// Replace this device's data with the account's (a device with no progress yet, or by choice).
+function takeRemote(r) {
+  S = { ...r, log: [...S.log.filter(l => l.t < dayStart()), ...(r.log || [])], daily: mergeDaily(S.daily, r.daily), since: S.since, syncedTo: window.cloud.user.uid };
+  afterRemote();
+}
+function afterRemote() {
   S.intro = S.intro || {}; S.decks.forEach(d => { d.opts = { ...defaultOpts(), ...(d.opts || {}) }; });
-  if (upgradeContent()) { S.updated = Date.now(); schedulePush(); }
-  saveLocal(); sync.last = Date.now(); sync.state = "ok";
+  snapshot();
+  if (upgradeContent()) save();
+  saveLocal();
   if (view.name !== "study") render();
 }
-async function syncNow(firstTime) {
+
+let pushTimer, busy = false, again = false, retryTimer;
+function schedulePush() { if (!cloudOn() || S.syncedTo !== window.cloud.user.uid) return; clearTimeout(pushTimer); pushTimer = setTimeout(syncNow, 1500); }
+// One sync: read the account, merge, write back only if the account is missing something.
+async function syncNow() {
   if (!cloudOn()) return;
-  sync.state = "syncing"; syncBadge();
-  let remote;
-  try { remote = await window.cloud.pull(); } catch (e) { sync.state = "error"; syncBadge(); return; }
-  const studied = S.cards.filter(c => c.state !== "new").length;
-  if (!remote) return pushNow();                                               // first device: the cloud starts from here
-  if (S.syncedTo === window.cloud.user.uid) {                                  // this device already syncs with this account
-    if (remote.updated > (S.updated || 0) && remote.device !== DEVICE) applyRemote(remote);
-    else if ((S.updated || 0) > remote.updated) return pushNow();
-    else { sync.state = "ok"; sync.last = Date.now(); }
-  } else if (!studied) applyRemote(remote);                                    // nothing here yet: take the cloud
-  else { sync.pending = remote; sync.state = "choice"; if (firstTime && view.name !== "study") go({ name: "settings" }); }
-  syncBadge();
+  if (busy) { again = true; return; }
+  busy = true; sync.state = "syncing"; syncBadge();
+  const me = window.cloud.user.uid;
+  try {
+    const remote = await window.cloud.pull();
+    if (!remote) { await window.cloud.push(await payload()); S.syncedTo = me; saveLocal(); }  // first device: the cloud starts from here
+    else {
+      const R = await decode(remote);
+      const studied = S.cards.some(c => c.state !== "new");
+      if (S.syncedTo !== me && !studied) takeRemote(R);                                         // nothing here yet: take the account's data
+      else if (S.syncedTo && S.syncedTo !== me) { sync.pending = { r: R, updated: remote.updated }; sync.state = "choice"; } // progress from another account
+      else {
+        const m = mergeStates(S, R);
+        if (m.toLocal) { S = m.state; S.syncedTo = me; afterRemote(); }
+        else if (S.syncedTo !== me) { S.syncedTo = me; saveLocal(); }
+        if (m.toCloud) await window.cloud.push(await payload());
+      }
+    }
+    if (sync.state !== "choice") { sync.state = "ok"; sync.last = Date.now(); }
+  } catch (e) {
+    sync.state = "error"; clearTimeout(retryTimer); retryTimer = setTimeout(syncNow, 30000);
+  }
+  busy = false; syncBadge();
+  if (sync.state === "choice" && view.name !== "study" && view.name !== "settings") go({ name: "settings" });
+  if (again) { again = false; syncNow(); }
 }
 function syncBadge() { const b = document.getElementById("syncBadge"); if (b) b.innerHTML = syncText(); }
 function syncText() {
@@ -188,10 +286,10 @@ function syncText() {
 window.addEventListener("cloud-ready", () => { syncBadge(); if (view.name === "settings" || view.name === "welcome") render(); });
 window.addEventListener("cloud-auth", () => {
   if (cloudOn() && view.name === "welcome") { S.welcomed = true; saveLocal(); document.querySelector("nav.tabs").hidden = false; view = { name: "home" }; render(); }
-  if (cloudOn()) syncNow(true); else { sync.state = "off"; }
+  if (cloudOn()) syncNow(); else { sync.state = "off"; }
   syncBadge(); if (view.name === "settings") render();
 });
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && cloudOn() && view.name !== "study") syncNow(false); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && cloudOn() && view.name !== "study") syncNow(); });
 document.addEventListener("click", e => { if (e.target.closest("[data-go-settings]")) go({ name: "settings" }); });
 
 // ============================================================================
@@ -655,7 +753,7 @@ function study() {
     document.querySelectorAll("[data-g]").forEach(b => b.onclick = () => grade(+b.dataset.g));
   };
   const grade = g => {
-    answer(c, g); ses.done++;
+    answer(cardById(c.id) || c, g); ses.done++; // the card itself may have just been refreshed by a sync
     ses.queue.shift();
     if (g === 1) ses.queue.splice(Math.min(3, ses.queue.length), 0, c.id); // see it again a few cards later
     Object.assign(ses, { flipped: false, typed: "", verdict: "", hint: false });
@@ -682,7 +780,7 @@ function settings() {
   else if (!window.cloud.user) account = `<p style="margin:0">Sign in with Google to keep your decks and progress on all your devices (phone, computer…).</p>
       <button class="primary" id="signIn">Sign in with Google</button>`;
   else if (sync.state === "choice" && sync.pending) {
-    const r = JSON.parse(sync.pending.state), rStudied = r.cards.filter(c => c.state !== "new").length;
+    const r = sync.pending.r, rStudied = r.cards.filter(c => c.state !== "new").length;
     account = `<p style="margin:0">Signed in as <b>${esc(window.cloud.user.email)}</b>. Your account and this device both have progress. Which one do you keep?</p>
       <button class="primary" id="keepCloud">Keep my account: ${rStudied} cards studied, ${r.decks.length} deck${r.decks.length === 1 ? "" : "s"} (saved ${new Date(sync.pending.updated).toLocaleDateString("en-GB")})</button>
       <button id="keepLocal">Keep this device: ${studied} cards studied, ${S.decks.length} deck${S.decks.length === 1 ? "" : "s"}</button>
@@ -713,7 +811,7 @@ function settings() {
   const on = (id, f) => { const el = $("#" + id); if (el) el.onclick = f; };
   on("installBtn", async () => { if (!installPrompt) return; installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; render(); });
   on("signIn", async () => { try { await window.cloud.signIn(); } catch (e) { toast("Sign-in failed: " + (e.code || "try again")); } });
-  on("signOut", async () => { await window.cloud.signOut(); S.syncedTo = null; saveLocal(); toast("Signed out. Your cards stay on this device."); render(); });
+  on("signOut", async () => { await window.cloud.signOut(); toast("Signed out. Your cards stay on this device."); render(); });
   on("delAcc", async e => {
     const b = e.currentTarget;
     if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Tap again to delete your account and its saved data for good"; return; }
@@ -725,9 +823,9 @@ function settings() {
       S.syncedTo = null; saveLocal(); await window.cloud.signOut().catch(() => {}); toast("Your saved data is deleted. To finish, sign in again and tap Delete once more."); }
     render();
   });
-  on("syncBtn", () => syncNow(false).then(render));
-  on("keepCloud", () => { applyRemote(sync.pending); sync.pending = null; toast("Your account's data is now on this device"); go({ name: "home" }); });
-  on("keepLocal", () => { sync.pending = null; S.syncedTo = window.cloud.user.uid; S.updated = Date.now(); saveLocal(); pushNow().then(() => { toast("This device's data is now saved in your account"); render(); }); });
+  on("syncBtn", () => syncNow().then(render));
+  on("keepCloud", () => { takeRemote(sync.pending.r); sync.pending = null; sync.state = "ok"; toast("Your account's data is now on this device"); go({ name: "home" }); });
+  on("keepLocal", () => { sync.pending = null; S.syncedTo = window.cloud.user.uid; S.updated = Date.now(); saveLocal(); payload().then(window.cloud.push).then(() => { sync.state = "ok"; sync.last = Date.now(); toast("This device's data is now saved in your account"); render(); }); });
 }
 
 // ============================================================================

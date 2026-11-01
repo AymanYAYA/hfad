@@ -28,7 +28,7 @@ Live at https://aymanyaya.github.io/hfad/ (GitHub Pages, repo AymanYAYA/hfad, br
 - `manifest.webmanifest`, `icons/` — installable PWA.
 
 ## Behaviour worth knowing
-- Sync: most recent `updated` wins; a device that never synced but has progress asks which data to keep. Push debounced 1.5 s, pull on app focus. The payload keeps only today's log plus `daily` summaries (stats).
+- Sync: merged card by card (sync v3). `save()` stamps `mod` on every card/deck whose content changed and records deletions in `S.gone` (kept 90 days); each sync reads the account doc, merges (latest change wins per card/deck, deletion wins over older changes, today's answers combined, today's stats recounted) and writes only if the account lacks something. Cloud data is gzip+base64 in field `z` (old plain `state` still read). A device with no progress takes the account's data; a device with progress from another Google account asks which to keep. Push debounced 1.5 s, sync on app focus, retry after 30 s on error.
 - "Study 10 more new cards" adds to today's allowance; unused extra is dropped when the session ends.
 - Typed answers: one typo tolerated; contractions = full form. Tense cards (`c.strict`) never accept a wrong tense or a wrong ending (-s, -ed, -ing) as a typo.
 - Content upgrades of starter cards run in `upgradeContent()` on load and after a sync pull (keeps user edits where possible).
@@ -39,5 +39,5 @@ No test suite. Test with Playwright (preinstalled; Chromium at `/opt/pw-browsers
 
 ## Ideas not done yet (ask before starting)
 - AI-assisted deck creation (paste a text, get cards).
-- Fewer Firestore writes (one per session instead of one per card) — free plan is ~400 active users/day today.
+- Fewer Firestore writes (one per session instead of one per card) — each sync is now 1 read + at most 1 write.
 - Anki deck import; deck sharing; study time in stats; custom domain (paid, postponed).
