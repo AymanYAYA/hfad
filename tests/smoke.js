@@ -31,6 +31,7 @@ const url = "file://" + path.resolve(__dirname, "..", "index.html");
   await step("create a deck and add cards", async () => {
     await page.tap("#back"); await page.tap("#back");
     await page.fill("#newDeck", "Test deck"); await page.tap("#createDeck");
+    await page.waitForSelector("#bulkBtn"); await page.tap("#addBtn");
     await page.fill("#front", "bonjour"); await page.fill("#backF", "hello"); await page.tap("#saveCard");
     await page.tap("#back"); await page.tap("#bulkBtn");
     await page.fill("#lines", "chat ; cat\nchien ; dog ; My dog barks."); await page.tap("#addAll");

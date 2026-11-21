@@ -534,7 +534,7 @@ function home() {
   document.querySelectorAll("[data-deck]").forEach(b => b.onclick = () => go({ name: "deck", deck: b.dataset.deck }));
   const create = () => {
     const name = $("#newDeck").value.trim(); if (!name) return $("#newDeck").focus();
-    const d = { id: uid(), name, opts: defaultOpts() }; S.decks.push(d); save(); toast("Deck created"); go({ name: "add", deck: d.id });
+    const d = { id: uid(), name, opts: defaultOpts() }; S.decks.push(d); save(); toast("Deck created"); go({ name: "deck", deck: d.id });
   };
   $("#createDeck").onclick = create;
   $("#newDeck").onkeydown = e => { if (e.key === "Enter") create(); };
