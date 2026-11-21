@@ -44,6 +44,18 @@ const fmtIvl = d => d === 0 ? "now" : d < 30 ? d + "d" : d < 365 ? Math.round(d 
 // ============================================================================
 // 2. Storage. Everything lives in this browser (localStorage); once signed in, also in the cloud (section 2b).
 // ============================================================================
+// Appearance: "auto" follows the phone's dark setting; "light" / "dark" force it. Kept on this device only.
+const THEME_KEY = "hfad.theme";
+const getTheme = () => { try { return localStorage.getItem(THEME_KEY) || "auto"; } catch (e) { return "auto"; } };
+function applyTheme(t = getTheme()) {
+  const root = document.documentElement;
+  if (t === "auto") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", t);
+  const dark = t === "dark" || (t === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.content = dark ? "#1B1916" : "#F4EEE3"; });
+}
+applyTheme();
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => applyTheme());
+
 const KEY = "dailydeck.v2", OLD_KEY = "dailydeck.v1"; // storage keys keep the old name so existing progress is not lost
 let S;
 function dayStart(t = Date.now()) { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); }
@@ -864,10 +876,20 @@ function settings() {
       ${account}
     </div>
     <div class="panel">
+      <h2>Appearance</h2>
+      <div class="seg three" role="group" aria-label="Appearance">${[["auto", "Automatic"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<button type="button" data-theme-opt="${v}" aria-pressed="${getTheme() === v}">${l}</button>`).join("")}</div>
+      <p class="help" style="margin:0">Automatic follows your phone's light or dark mode.</p>
+    </div>
+    <div class="panel">
       <h2>How cards are scheduled</h2>
       <p class="muted small-text" style="margin:0">Hfad uses FSRS, the same scheduler as recent versions of Anki. It aims for a 90% chance that you still remember a card when it comes back: cards you know well come back after longer and longer gaps, cards you forget come back sooner.</p>
     </div>
     <p class="muted small-text" style="margin:0;text-align:center"><a href="privacy.html" style="color:var(--accent)">Privacy</a> · No ads, no tracking, your data is never sold.</p>`;
+  document.querySelectorAll("[data-theme-opt]").forEach(b => b.onclick = () => {
+    const v = b.dataset.themeOpt;
+    try { if (v === "auto") localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, v); } catch (e) {}
+    applyTheme(v); document.querySelectorAll("[data-theme-opt]").forEach(x => x.setAttribute("aria-pressed", x === b));
+  });
   const on = (id, f) => { const el = $("#" + id); if (el) el.onclick = f; };
   on("installBtn", async () => { if (!installPrompt) return; installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; render(); });
   on("signIn", async () => { try { await window.cloud.signIn(); } catch (e) { toast("Sign-in failed: " + (e.code || "try again")); } });

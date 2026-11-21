@@ -30,9 +30,9 @@
   --body: "Source Sans 3", "Helvetica Neue", Arial, sans-serif;
   color-scheme: light;
 }
-/* Night version of the same paper look, used when the phone is in dark mode. */
+/* Night version of the same paper look: follows the phone, unless Settings › Appearance forces light or dark. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #1B1916; --surface: #25221E; --ink: #ECE5D8; --muted: #A89F91; --line: #3A352E;
     --accent: #AFC08C; --accent-soft: #2E3226;
     --again: #E8917F; --hard-bg: #3D2420; --hard: #F0A897; --good-bg: #22321F; --good: #A9D29B; --easy: #9CC58E;
@@ -41,6 +41,15 @@
     --c0: #302C26; --c1: #3D4A2F; --c2: #5A7243; --c3: #86A366; --c4: #B9D19A;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #1B1916; --surface: #25221E; --ink: #ECE5D8; --muted: #A89F91; --line: #3A352E;
+  --accent: #AFC08C; --accent-soft: #2E3226;
+  --again: #E8917F; --hard-bg: #3D2420; --hard: #F0A897; --good-bg: #22321F; --good: #A9D29B; --easy: #9CC58E;
+  --again-bg: #A3412F; --easy-bg: #3E6B3B; --hard-line: #5A3530; --good-line: #35502E; --shadow: rgba(0,0,0,.45);
+  --new: #94B8DF; --due: #9CC58E;
+  --c0: #302C26; --c1: #3D4A2F; --c2: #5A7243; --c3: #86A366; --c4: #B9D19A;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
@@ -77,6 +86,7 @@ textarea.big { min-height: 200px; font-size: 0.95rem; }
 .check { display: flex; gap: 10px; align-items: center; font-size: 0.95rem; }
 .check input { width: 20px; height: 20px; accent-color: var(--accent); }
 .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--accent-soft); padding: 4px; border-radius: 12px; }
+.seg.three { grid-template-columns: 1fr 1fr 1fr; }
 .seg button { border: 0; background: none; padding: 9px; color: var(--muted); border-radius: 9px; font-size: 0.95rem; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px var(--shadow); }
 
@@ -208,7 +218,7 @@ nav.tabs button[aria-current="page"] { color: var(--accent); }
 </nav>
 <script src="decks.js?v=11"></script>
 <script src="phrasal.js?v=1"></script>
-<script src="app.js?v=27"></script>
+<script src="app.js?v=28"></script>
 <script type="module" src="cloud.js?v=2"></script>
 </body>
 </html>
