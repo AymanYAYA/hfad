@@ -34,7 +34,8 @@ window.cloud = {
   },
   signOut: () => signOut(auth),
   async pull() { const s = await getDoc(ref()); return s.exists() ? s.data() : null; },
-  push: data => setDoc(ref(), data),
+  // merge: fields not sent (the safety copies, bk) stay as they are.
+  push: data => setDoc(ref(), data, { merge: true }),
   // Deletes the saved data, then the account itself. Google asks for a recent sign-in before deleting an account.
   async deleteAccount() {
     try { await deleteDoc(ref()); } catch (e) { e.nothingDeleted = true; throw e; }

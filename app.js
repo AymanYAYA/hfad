@@ -125,6 +125,7 @@ function load() {
   snapshot(); // from here on, save() notices which cards and decks change
   trimExtras();
   if (upgradeContent()) save();
+  dailyCopy();
 }
 // Starter verb cards saved by an older version get the new content.
 // Level 1: the French example is added (unless you edited the card). Levels 2–3 were rewritten as tense cards: new content, progress reset.
@@ -192,7 +193,9 @@ async function decode(remote) {
 }
 async function payload() {
   const { log, syncedTo, ...rest } = S, t0 = dayStart();
-  return { v: 3, updated: S.updated || Date.now(), device: DEVICE, ...(await encode({ ...rest, log: log.filter(l => l.t >= t0) })) };
+  const body = await encode({ ...rest, log: log.filter(l => l.t >= t0) });
+  const bk = cloudCopies(JSON.stringify(body).length); // sent only when the copies change (the push keeps the other fields)
+  return { v: 3, updated: S.updated || Date.now(), device: DEVICE, ...body, ...(bk ? { bk } : {}) };
 }
 
 // Merge this device (L) with the account (R). Tells whether this device and the account each need the result.
@@ -247,6 +250,7 @@ function mergeStates(L, R) {
 }
 // Replace this device's data with the account's (a device with no progress yet, or by choice).
 function takeRemote(r) {
+  if (S.cards.some(c => c.state !== "new")) keepCopy("Before taking your account's data");
   S = { ...r, log: [...S.log.filter(l => l.t < dayStart()), ...(r.log || [])], daily: mergeDaily(S.daily, r.daily), since: S.since, syncedTo: window.cloud.user.uid };
   afterRemote();
 }
@@ -268,14 +272,16 @@ async function syncNow() {
   const me = window.cloud.user.uid;
   try {
     const remote = await window.cloud.pull();
-    if (!remote) { await window.cloud.push(await payload()); S.syncedTo = me; saveLocal(); }  // first device: the cloud starts from here
+    if (!remote) { cloudSide = { bk: [], prev: null }; await window.cloud.push(await payload()); S.syncedTo = me; saveLocal(); }  // first device: the cloud starts from here
     else {
       const R = await decode(remote);
+      rememberAccount(remote, R);
       const studied = S.cards.some(c => c.state !== "new");
       if (S.syncedTo !== me && !studied) takeRemote(R);                                         // nothing here yet: take the account's data
       else if (S.syncedTo && S.syncedTo !== me) { sync.pending = { r: R, updated: remote.updated }; sync.state = "choice"; } // progress from another account
       else {
         const m = mergeStates(S, R);
+        if (m.toLocal && m.state.cards.length < S.cards.length - 5) keepCopy("Before a sync removed cards");
         if (m.toLocal) { S = m.state; S.syncedTo = me; afterRemote(); }
         else if (S.syncedTo !== me) { S.syncedTo = me; saveLocal(); }
         if (m.toCloud) await window.cloud.push(await payload());
@@ -301,8 +307,66 @@ window.addEventListener("cloud-auth", () => {
   if (cloudOn()) syncNow(); else { sync.state = "off"; }
   syncBadge(); if (view.name === "settings") render();
 });
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && cloudOn() && view.name !== "study") syncNow(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  dailyCopy(); // first, so the day's copy is taken before the sync (an iPhone app often reopens without reloading)
+  if (cloudOn() && view.name !== "study") syncNow();
+});
 document.addEventListener("click", e => { if (e.target.closest("[data-go-settings]")) go({ name: "settings" }); });
+
+// ============================================================================
+// 2c. Safety copies: an automatic copy of everything, kept apart from the live data, so a bad sync or a mistake
+//     can always be undone. No button to remember: copies are made on their own.
+//     - On this device: one copy per day you open Hfad (taken before that day's first sync), plus one before
+//       anything replaces many cards (taking the account's data, a sync that removes cards, a restore). Last 10 kept.
+//     - In your account: before the first change of each day, the account's previous version is kept beside it
+//       (same document, field bk). Last 5 days kept, fewer if the document would get close to Firestore's 1 MB limit.
+//     Restoring (Settings › Safety copies) puts the copy back as a fresh change, so it wins on every device.
+// ============================================================================
+const COPIES_KEY = "hfad.copies", LOCAL_COPIES = 10, CLOUD_COPIES = 5, DOC_LIMIT = 900000;
+let cloudSide = null, forceCloudCopy = false; // the account's last version read by sync, and its copies
+const getCopies = () => { try { return JSON.parse(localStorage.getItem(COPIES_KEY)) || []; } catch (e) { return []; } };
+const worthCopying = st => st.cards.length > 0 && (st.cards.some(c => c.state !== "new") || st.decks.length > 1 || st.cards.length !== VERBS.length);
+// The state is captured right away (before any later change), then compressed and stored.
+function keepCopy(why) {
+  if (!S || !worthCopying(S)) return Promise.resolve();
+  const { log, syncedTo, ...rest } = S, t = Date.now(), n = S.cards.length, d = S.decks.length;
+  return encode(rest).then(body => {
+    const list = [{ t, why, n, d, ...body }, ...getCopies()].slice(0, LOCAL_COPIES);
+    while (list.length) { try { localStorage.setItem(COPIES_KEY, JSON.stringify(list)); break; } catch (e) { list.pop(); } } // full: drop the oldest
+  }).catch(() => {});
+}
+function dailyCopy() { const last = getCopies().find(c => c.why === "Daily copy"); if (!last || dayKey(last.t) !== dayKey()) return keepCopy("Daily copy"); return Promise.resolve(); }
+// What the account held when sync last read it.
+function rememberAccount(remote, R) {
+  cloudSide = { bk: Array.isArray(remote.bk) ? remote.bk : [], prev: remote.z ? { t: remote.updated || Date.now(), n: R.cards.length, d: R.decks.length, z: remote.z } : null };
+}
+// Copies to write with the next push, or undefined when they don't change. The account's previous version is added
+// at the first push of each day (and before a restore or a replace), then the list is trimmed to fit the document.
+function cloudCopies(mainSize) {
+  if (!cloudSide) return undefined;
+  let list = cloudSide.bk, changed = false;
+  const p = cloudSide.prev, newest = list[0];
+  if (p && (forceCloudCopy || !newest || dayKey(newest.at || newest.t) !== dayKey())) { list = [{ ...p, at: Date.now() }, ...list].slice(0, CLOUD_COPIES); changed = true; }
+  forceCloudCopy = false; cloudSide.prev = null;
+  while (list.length && mainSize + JSON.stringify(list).length > DOC_LIMIT) { list = list.slice(0, -1); changed = true; }
+  cloudSide.bk = list;
+  return changed ? list : undefined;
+}
+// Put a copy back. The cards there become the latest change, so sync spreads them; cards made since are removed.
+async function restoreCopy(copy) {
+  const R = await decode(copy);
+  if (!R || !Array.isArray(R.cards) || !Array.isArray(R.decks)) throw new Error("bad copy");
+  await keepCopy("Before restoring a copy");
+  const now = Date.now(), gone = S.gone = S.gone || { c: {}, d: {} };
+  S.decks = R.decks.map(d => ({ ...d, mod: now, opts: { ...defaultOpts(), ...(d.opts || {}) } }));
+  S.cards = R.cards.map(c => ({ ...c, mod: now }));
+  S.decks.forEach(d => delete gone.d[d.id]); S.cards.forEach(c => delete gone.c[c.id]);
+  S.daily = mergeDaily(S.daily, R.daily);
+  if (R.tenseV) S.tenseV = R.tenseV;
+  forceCloudCopy = true;
+  save();
+}
 
 // ============================================================================
 // 3. Daily queue per deck: learning cards first, then reviews mixed with new cards.
@@ -866,6 +930,13 @@ function settings() {
     : isIOS() ? `<p style="margin:0">Add Hfad to your home screen like a real app: its own icon, full screen, works without internet.</p>
         <ol class="small-text" style="margin:0;padding-left:1.2em"><li>Open this page in <b>Safari</b>.</li><li>Tap <b>Share</b> (the square with an arrow).</li><li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li></ol>`
     : `<p style="margin:0">Add Hfad to this device like a real app: in Chrome or Edge, use the <b>Install</b> icon at the right of the address bar, or the browser menu → <b>Install Hfad</b>.</p>`;
+  // Safety copies: this device's, then the account's (known once sync has read the account)
+  const when = t => { const k = dayKey(t), hm = new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    return (k === dayKey() ? "Today" : k === dayKey(Date.now() - DAY) ? "Yesterday" : new Date(t).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })) + ", " + hm; };
+  const copies = [...getCopies().map((c, i) => ({ c, key: "l" + i, where: "This device" })),
+    ...(cloudOn() && cloudSide ? cloudSide.bk.map((c, i) => ({ c, key: "a" + i, where: "Your account" })) : [])];
+  const copyRows = copies.length ? copies.map(({ c, key, where }) => `<div class="copy-row"><div><b>${when(c.t)}</b><br><span class="muted small-text">${where} · ${c.d} deck${c.d === 1 ? "" : "s"}, ${c.n} cards${c.why && c.why !== "Daily copy" ? " · " + esc(c.why.toLowerCase()) : ""}</span></div><button class="small" data-restore="${key}">Restore</button></div>`).join("")
+    : `<p class="muted small-text" style="margin:0">No copy yet. Hfad makes one each day you open it, once you've studied or added cards.</p>`;
   app.innerHTML = `${header("Settings")}
     <div class="panel">
       <h2>Install the app</h2>
@@ -874,6 +945,11 @@ function settings() {
     <div class="panel">
       <h2>Account and sync</h2>
       ${account}
+    </div>
+    <div class="panel">
+      <h2>Safety copies</h2>
+      <p class="muted small-text" style="margin:0">Hfad copies your decks and progress on its own, every day you use it: on this device${cloudOn() ? " and in your account" : ""}. If cards go missing, restore a copy. Your current cards are copied first, so a restore can be undone too.</p>
+      ${copyRows}
     </div>
     <div class="panel">
       <h2>Appearance</h2>
@@ -906,8 +982,16 @@ function settings() {
     render();
   });
   on("syncBtn", () => syncNow().then(render));
+  document.querySelectorAll("[data-restore]").forEach(b => {
+    const k = b.dataset.restore, copy = k[0] === "l" ? getCopies()[+k.slice(1)] : cloudSide && cloudSide.bk[+k.slice(1)];
+    armed(b, "Tap again to restore", async () => {
+      b.disabled = true;
+      try { await restoreCopy(copy); toast("Copy restored"); go({ name: "home" }); }
+      catch (e) { toast("Couldn't restore this copy"); render(); }
+    });
+  });
   on("keepCloud", () => { takeRemote(sync.pending.r); sync.pending = null; sync.state = "ok"; toast("Your account's data is now on this device"); go({ name: "home" }); });
-  on("keepLocal", () => { sync.pending = null; S.syncedTo = window.cloud.user.uid; S.updated = Date.now(); saveLocal(); payload().then(window.cloud.push).then(() => { sync.state = "ok"; sync.last = Date.now(); toast("This device's data is now saved in your account"); render(); }); });
+  on("keepLocal", () => { sync.pending = null; forceCloudCopy = true; S.syncedTo = window.cloud.user.uid; S.updated = Date.now(); saveLocal(); payload().then(window.cloud.push).then(() => { sync.state = "ok"; sync.last = Date.now(); toast("This device's data is now saved in your account"); render(); }); });
 }
 
 // ============================================================================
