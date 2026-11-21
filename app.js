@@ -169,7 +169,7 @@ function stamp() {
 //     Rule: the two versions are merged card by card. For each card (and deck) the latest change wins,
 //     a deletion wins over older changes, and the history of answers is combined. Nothing studied is lost,
 //     even after studying offline on two devices.
-//     Only exception: a device with progress made under another Google account asks which data to keep.
+//     Only exception: a device holding its own data from another Google account asks which data to keep.
 // ============================================================================
 const DEVICE = (() => { try { let d = localStorage.getItem("dailydeck.device"); if (!d) { d = uid(); localStorage.setItem("dailydeck.device", d); } return d; } catch (e) { return "unknown"; } })();
 let sync = { state: "off", pending: null, last: 0 };
@@ -250,7 +250,7 @@ function mergeStates(L, R) {
 }
 // Replace this device's data with the account's (a device with no progress yet, or by choice).
 function takeRemote(r) {
-  if (S.cards.some(c => c.state !== "new")) keepCopy("Before taking your account's data");
+  keepCopy("Before taking your account's data"); // only if this device holds something of its own
   S = { ...r, log: [...S.log.filter(l => l.t < dayStart()), ...(r.log || [])], daily: mergeDaily(S.daily, r.daily), since: S.since, syncedTo: window.cloud.user.uid };
   afterRemote();
 }
@@ -276,8 +276,8 @@ async function syncNow() {
     else {
       const R = await decode(remote);
       rememberAccount(remote, R);
-      const studied = S.cards.some(c => c.state !== "new");
-      if (S.syncedTo !== me && !studied) takeRemote(R);                                         // nothing here yet: take the account's data
+      const mine = worthCopying(S); // progress, or decks and cards of its own (not just the untouched starter deck)
+      if (S.syncedTo !== me && !mine) takeRemote(R);                                            // nothing here yet: take the account's data
       else if (S.syncedTo && S.syncedTo !== me) { sync.pending = { r: R, updated: remote.updated }; sync.state = "choice"; } // progress from another account
       else {
         const m = mergeStates(S, R);

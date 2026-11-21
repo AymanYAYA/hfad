@@ -1,0 +1,23 @@
+# Runs Hfad's automatic tests on every change pushed to GitHub (free for public repositories).
+# If one fails, GitHub shows a red cross on the change and emails the owner.
+name: Tests
+on:
+  push:
+  pull_request:
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-save --no-package-lock playwright@1.48.2
+      - run: npx playwright install --with-deps chromium
+      - name: Every screen (smoke test)
+        run: node tests/smoke.js
+      - name: Sync between devices
+        run: node tests/sync.js
+      - name: Safety copies
+        run: node tests/backup.js
