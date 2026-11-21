@@ -28,6 +28,7 @@ Live at https://aymanyaya.github.io/hfad/ (GitHub Pages, repo AymanYAYA/hfad, br
 - `manifest.webmanifest`, `icons/` — installable PWA.
 - Security headers: a Content-Security-Policy `<meta>` in `index.html` and `privacy.html` (no inline scripts allowed). A new outside service (API, CDN) must be added there, or it is silently blocked.
 - Text contrast: every text colour passes WCAG AA (4.5:1) on its background; `--muted` is #6B6357 for that reason. Keep it that way.
+- Dark mode: automatic, follows the phone (`@media (prefers-color-scheme: dark)` block right after `:root` in `index.html`, also in `privacy.html`). Never hard-code a colour in CSS or app.js: add a token to both palettes (all dark text checked AA too).
 
 ## Behaviour worth knowing
 - Sync: merged card by card (sync v3). `save()` stamps `mod` on every card/deck whose content changed and records deletions in `S.gone` (kept 90 days); each sync reads the account doc, merges (latest change wins per card/deck, deletion wins over older changes, today's answers combined, today's stats recounted) and writes only if the account lacks something. Cloud data is gzip+base64 in field `z` (old plain `state` still read). A device with no progress takes the account's data; a device with progress from another Google account asks which to keep. Push debounced 1.5 s, sync on app focus, retry after 30 s on error.
