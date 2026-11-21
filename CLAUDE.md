@@ -27,6 +27,7 @@ Live at https://aymanyaya.github.io/hfad/ (GitHub Pages, repo AymanYAYA/hfad, br
 - `sw.js` — service worker: app files network-first (no-cache), fonts and Firebase SDK cached. **Bump `CACHE` (hfad-vN) on every release**, otherwise iPhones keep the old version.
 - `manifest.webmanifest`, `icons/` — installable PWA.
 - Security headers: a Content-Security-Policy `<meta>` in `index.html` and `privacy.html` (no inline scripts allowed). A new outside service (API, CDN) must be added there, or it is silently blocked.
+- Text size: follows the phone (iPhone Dynamic Type via `font: -apple-system-body` on `html`, iOS only) and browser zoom; default 17px. Every CSS font size is in `rem` (never px; inputs keep `max(16px, …)` so iOS doesn't zoom on focus). Grade buttons and tab bar are capped with `min(…rem, Npx)` so they always fit. Check new screens at root 14px and 40px.
 - Text contrast: every text colour passes WCAG AA (4.5:1) on its background; `--muted` is #6B6357 for that reason. Keep it that way.
 - Dark mode: follows the phone by default (`@media (prefers-color-scheme: dark)` on `:root:not([data-theme="light"])`, same tokens repeated on `:root[data-theme="dark"]`, in `index.html`; `privacy.html` follows the phone only). Settings › Appearance (Automatic / Light / Dark) sets `data-theme` via `applyTheme()`, stored on the device only (`localStorage` key `hfad.theme`, not synced). Never hard-code a colour in CSS or app.js: add a token to both palettes (all dark text checked AA too).
 
