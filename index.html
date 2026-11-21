@@ -98,8 +98,12 @@ textarea.big { min-height: 200px; font-size: 0.95rem; }
 .deck-row .sub { font-size: 0.82rem; color: var(--muted); }
 .nums { display: flex; gap: 12px; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 0.95rem; }
 .n-new { color: var(--new); } .n-due { color: var(--due); } .n-zero { color: var(--line); }
-.sync { margin-top: -10px; color: var(--muted); }
-.sync .link { font-size: inherit; font-weight: 600; }
+.home-top { justify-content: center; }
+.home-top h1 { flex: none; font-size: 2rem; text-align: center; }
+.home-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px 14px; margin-top: -8px; padding: 0 4px; font-size: 0.8rem; }
+.home-foot .legend { display: flex; gap: 12px; }
+.sync { color: var(--muted); margin-left: auto; }
+.sync .link { font-size: inherit; font-weight: 600; padding: 0; }
 .welcome { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding-top: 6vh; }
 .welcome img { border-radius: 22px; box-shadow: 0 10px 30px var(--shadow); }
 .welcome h1 { font-size: 2.4rem; }
@@ -218,7 +222,7 @@ nav.tabs button[aria-current="page"] { color: var(--accent); }
 </nav>
 <script src="decks.js?v=11"></script>
 <script src="phrasal.js?v=1"></script>
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 <script type="module" src="cloud.js?v=2"></script>
 </body>
 </html>

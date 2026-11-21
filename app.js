@@ -521,10 +521,10 @@ function home() {
     const k = counts(d), total = cardsOf(d.id).length;
     return `<button class="deck-row" data-deck="${d.id}"><span><span class="name">${esc(d.name)}</span><br><span class="sub">${total} card${total === 1 ? "" : "s"}</span></span>${nums(k.fresh.length, k.due.length + k.learning.length)}</button>`;
   }).join("");
-  app.innerHTML = `${header("Hfad")}
-    <div class="small-text sync" id="syncBadge">${syncText()}</div>
-    ${S.decks.length ? `<div class="row small-text muted"><span class="n-new">● New</span><span class="n-due">● To review</span></div><div class="decks">${rows}</div>`
-      : `<div class="panel empty"><div class="big">No deck yet</div><p class="muted" style="margin:0">Create your first deck, then add cards to it.</p></div>`}
+  const syncLine = `<div class="sync" id="syncBadge">${syncText()}</div>`;
+  app.innerHTML = `<div class="top home-top"><h1>Hfad</h1></div>
+    ${S.decks.length ? `<div class="decks">${rows}</div><div class="home-foot"><span class="legend"><span class="n-new">● New</span><span class="n-due">● To review</span></span>${syncLine}</div>`
+      : `<div class="panel empty"><div class="big">No deck yet</div><p class="muted" style="margin:0">Create your first deck, then add cards to it.</p></div><div class="home-foot">${syncLine}</div>`}
     <div class="panel">
       <div class="field"><label for="newDeck">New deck</label><input id="newDeck" type="text" placeholder="e.g. Phrasal verbs, Interview English…" autocomplete="off"></div>
       <button class="primary" id="createDeck">Create deck</button>
