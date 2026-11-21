@@ -13,14 +13,16 @@
 :root { --bg: #F4EEE3; --surface: #FBF8F2; --ink: #2A2621; --muted: #6B6357; --line: #E4DACA; --accent: #4E5D3A; color-scheme: light; }
 @media (prefers-color-scheme: dark) { :root { --bg: #1B1916; --surface: #25221E; --ink: #ECE5D8; --muted: #A89F91; --line: #3A352E; --accent: #AFC08C; color-scheme: dark; } }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Helvetica Neue", Arial, sans-serif; font-size: 17px; line-height: 1.55; }
+html { font-size: 106.25%; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@supports (font: -apple-system-body) and (-webkit-touch-callout: none) { html { font: -apple-system-body; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Helvetica Neue", Arial, sans-serif; font-size: 1rem; line-height: 1.55; }
 main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
-h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; font-size: 1.75rem; margin: 8px 0 4px; }
-h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; font-size: 1.2rem; margin: 28px 0 6px; }
+h1 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; font-size: 1.647rem; margin: 8px 0 4px; }
+h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; font-size: 1.129rem; margin: 28px 0 6px; }
 p, li { margin: 0 0 10px; }
 ul { padding-left: 1.2em; }
 a { color: var(--accent); }
-.muted { color: var(--muted); font-size: .9rem; }
+.muted { color: var(--muted); font-size: 0.847rem; }
 </style>
 </head>
 <body>
