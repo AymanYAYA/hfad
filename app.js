@@ -551,7 +551,7 @@ function deckScreen() {
     <div class="panel study-box">
       <div class="study-nums"><div><b class="n-new">${k.fresh.length}</b><span class="label">New</span></div><div><b class="n-due">${k.due.length + k.learning.length}</b><span class="label">To review</span></div></div>
       ${todo ? `<button class="primary wide" id="studyBtn">Study now</button>`
-        : `<p style="margin:0"><b>Done for today.</b> <span class="muted">${cs.length ? `${tomorrow} card${tomorrow === 1 ? "" : "s"} to review tomorrow.` : "Add some cards to start."}</span></p>
+        : `<p style="margin:0">${cs.length ? `<b>Done for today.</b> <span class="muted">${tomorrow} card${tomorrow === 1 ? "" : "s"} to review tomorrow.</span>` : `<b>No cards yet.</b> <span class="muted">Add some cards to start.</span>`}</p>
            ${k.newLeft ? `<button class="wide" id="moreBtn">Study 10 more new cards</button>` : ""}`}
     </div>
     <div class="menu">
