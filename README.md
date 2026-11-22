@@ -7,7 +7,7 @@ A simple Anki: create your own decks and cards, and review them with the same sc
 **Try it:** https://aymanyaya.github.io/hfad/
 
 ## Problem
-Anki is the reference for spaced repetition, but it is powerful and austere: many people give up on the interface before the method works. I wanted the same engine with a much simpler experience, and an option Anki doesn't make easy: typing the answer and having it checked.
+I wanted to learn English with flashcards, because spaced repetition is a method that works. But every app I found was paid. So I built my own, free for everyone.
 
 ## Method
 **Your decks, your cards.** Create a deck, add cards one by one (front, back, optional example) or many at once by pasting `front ; back` lines or two columns from a spreadsheet. Each card can also create its reversed card. Browse, search, edit or delete any card without losing its progress.
